@@ -50,6 +50,24 @@ E.game.register_craft {
 	toolworn={1},
 }
 
+minetest.register_node(mn..":plank",{
+	description="Plank",
+	tiles={tex"planks"},
+	groups={choppy=1}
+})
+
+E.game.register_craft {
+	input={"group:tool_axe1",mn..":log"},
+	output={"group:tool_axe1",mn..":plank 4"},
+	toolworn={1}
+}
+
+E.game.register_craft {
+	input={"group:tool_axe1",mn..":plank"},
+	output={"group:tool_axe1",mn..":stick 4"},
+	toolworn={1}
+}
+
 for k,v in ipairs{{"sharpstick","stick"},{"sharpstone","pebble"}} do
 	local mat=mn..":"..v[2]
 	local tool=mn..":"..v[1]
@@ -71,11 +89,11 @@ for k,v in ipairs{
 		mn..":toolhead_stone_"..tname,
 		mn..":tool_stone_"..tname
 	minetest.register_craftitem(toolhead,{
-		description = tdesc.." Head",
+		description = "Stone "..tdesc.." Head",
 		inventory_image = tex ("stone_"..tname.."_head")
 	})
 	minetest.register_tool(tool,{
-		description = tdesc,
+		description = "Stone "..tdesc,
 		inventory_image = tex("stone_"..tname),
 		groups={
 			["tool_"..tname.."1"]=1
@@ -85,6 +103,9 @@ for k,v in ipairs{
 			uses=72
 		}
 	})
+	E.game.register_group_display("group:tool_"..tname.."1",{
+		description = tdesc..": stone or higher",
+	},tool)
 	E.game.register_craft{
 		input={mn..":sharpstone",mn..":pebble"},
 		output={mn..":sharpstone",toolhead},

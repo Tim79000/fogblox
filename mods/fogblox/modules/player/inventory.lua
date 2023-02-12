@@ -43,13 +43,19 @@ local function display_item(form,x,y,item)
 	local iname=stack:get_name()
 	local groups=E.parse_groups(iname)
 	local displ={}
-	if groups then
-		stack:set_name(get_display_item(iname))
+	local grdispl=E.game.get_group_display(iname)
+	local grnodis
+	if groups and grdispl then
+		E.rename_stack(stack,grdispl)
+		item=stack:to_string()
+		grnodis=true
+	elseif groups then
+		E.rename_stack(stack,get_display_item(iname))
 		local meta=stack:get_meta()
 		if meta:get_string("description")=="" then
 			local gr={}
 			for k,v in pairs(groups) do
-				gr[#gr+1]=E.game.item_group_descs[k] or k
+				gr[#gr+1]=k
 			end
 			sort(gr)
 			meta:set_string("description",M("Any %s"):format(concat(gr,"+"))())
@@ -57,7 +63,7 @@ local function display_item(form,x,y,item)
 		item=stack:to_string()
 	end
 	form[#form+1]={"item_image",{x+0.1,y+0.1},{0.8,0.8},item}
-	if groups then
+	if groups and not grnodis then
 		form[#form+1]={"image",{x+0.2,y+0.2},{0.6,0.6},E.tex"craft_group"}
 	end
 	form[#form+1]={"tooltip",{x,y},{1,1},stack:get_description()}
@@ -131,7 +137,12 @@ function E.game.get_inventory_formspec(ref)
 			{"list","current_player","main",{0.5,0.4+6+0.25},{9,4}},
 	}
 	local recipes={}
-	local list=ref:get_inventory():get_list("main")
+	local inv=ref:get_inventory()
+	local ll=inv:get_list("main")
+	local list={}
+	for n=1,inv:get_width("main") do
+		list[n]=ll[n]
+	end
 	form.items=list
 	for v,_ in pairs(drecipes[name]) do
 		if not state.sticky or state.sticky.recipe~=v then
@@ -186,7 +197,6 @@ function E.game.get_inventory_formspec(ref)
 	form[#form+1]={"scroll_container_end"}
 	form.items=nil
 	form=E.formspec(form)
-	E._G.print("[[[","\n",form,"\n","]]]")
 	return form
 end
 
@@ -196,6 +206,7 @@ end
 
 minetest.register_on_joinplayer(function(ref)
 	local inv = ref:get_inventory()
+	ref:hud_set_hotbar_itemcount(9)
 	inv:set_width("main",9)
 	inv:set_size("main",9*4)
 	inv:set_size("craft",0)
@@ -236,7 +247,15 @@ function E.game.on_inventory_receive_fields(ref,fields)
 			local id=tonumber(M(k):sub(6)())
 			local recipe=id and E.game.crafts[id]
 			local inv=ref:get_inventory()
-			if recipe and recipe:check(inv:get_list("main"),ref) then
+			local list=inv:get_list("main")
+			local ll={}
+			local llc={}
+			local w=inv:get_width("main")
+			for n=1,w do
+				ll[n]=list[n]
+				llc[n]=ll[n]
+			end
+			if recipe and recipe:check(llc,ref) then
 				if state.drawn and state.drawn[recipe] then
 					state.sticky={
 						n=state.drawn[recipe],
@@ -244,9 +263,12 @@ function E.game.on_inventory_receive_fields(ref,fields)
 						scroll=state.scroll or 0
 					}
 				end
-				local list=inv:get_list("main")
-				local out=recipe:craft(list,ref)
+				local out=recipe:craft(ll,ref)
+				for n=1,#ll do
+					list[n]=ll[n]
+				end
 				inv:set_list("main",list)
+				inv:set_width("main",w)
 				if out then
 					for k,v in ipairs(out) do
 						minetest.handle_node_drops(ref:get_pos(),{v},ref)
@@ -256,6 +278,7 @@ function E.game.on_inventory_receive_fields(ref,fields)
 		end
 	end
 	if dirty or fields.quit then
+		state.sticky=nil
 		build_invform(ref)
 	end
 end

@@ -83,3 +83,11 @@ function E.worn_stack(stack,group)
 	stack:add_wear(wear)
 	return stack
 end
+
+function E.rename_stack(stack,new)
+	local m,c,w=stack:get_meta():to_table(),stack:get_count(),stack:get_wear()
+	stack:set_name(new)
+	stack:get_meta():from_table(m)
+	stack:set_count(c)
+	stack:set_wear(w)
+end

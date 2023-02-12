@@ -280,9 +280,7 @@ minetest.register_node(mn..":sapling",{
 minetest.register_craftitem(mn..":stick",{
 		description = "Stick",
 		inventory_image = tex "stick",
-		groups = {stick=1}
 })
-E.game.item_group_descs.stick="stick"
 
 local function realplace(pos,t,dir)
 	local node={}

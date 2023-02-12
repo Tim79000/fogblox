@@ -1,8 +1,9 @@
 --[
 local type,pairs,ipairs,minetest
 =     type,pairs,ipairs,minetest
-local sort =
-	table.sort
+local sort,concat =
+	table.sort,
+	table.concat
 --]
 
 function E.parse_groups(item)
@@ -18,7 +19,6 @@ end
 local groups={}
 local _groups=groups
 E.game.item_groups=groups
-E.game.item_group_descs={}
 
 function E.check_groups(item,groups)
 	if type(groups)=="string" then groups=E.parse_groups(groups) end
@@ -30,13 +30,32 @@ function E.check_groups(item,groups)
 	return true
 end
 
+local function groupkey(groups)
+	if type(groups)=="string" then groups=E.parse_groups(groups) end
+	if not groups then return end
+	local gs={}
+	for k,v in pairs(groups) do gs[#gs+1]=k end
+	sort(gs)
+	return E.modname..":gd_"..minetest.sha1(concat(gs,","))
+end
+
+function E.game.register_group_display(groups,def,base)
+	local bdef=minetest.registered_items[base] or {type="node"}
+	minetest.register_item(groupkey(groups),E.underride(def,bdef))
+end
+
+function E.game.get_group_display(groups)
+	local name=groupkey(groups)
+	if not name then return end
+	if not minetest.registered_items[name] then return end
+	return name
+end
+
 function E.get_group_items(groups)
 	if type(groups)=="string" then groups=E.parse_groups(groups) end
 	local gs={}
 	for k,v in pairs(groups) do gs[#gs+1]=k end
-	sort(gs,function(a,b)
-		return a[1]<b[1]
-	end)
+	sort(gs)
 	local items
 	for _,group in ipairs(gs) do
 		local its={}
