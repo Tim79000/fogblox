@@ -54,7 +54,7 @@ local function checkplace(pos)
 	return nodes,ntable
 end
 
-minetest.register_abm {
+--[[minetest.register_abm {
 	label = "fire spread",
 	nodenames = {"group:igniter"},
 	interval = 2,
@@ -92,4 +92,4 @@ minetest.register_abm {
 			minetest.set_node(pp,{name=mn..":fire"})
 		end
 	end
-}
+}]]

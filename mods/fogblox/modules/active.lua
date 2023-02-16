@@ -206,7 +206,9 @@ minetest.swap_node=dsfy(minetest.swap_node)
 minetest.remove_node=dsfy(minetest.remove_node)
 minetest.bulk_set_node=dsfy_l(minetest.remove_node)
 minetest.register_on_liquid_transformed(function(pos_l)
-	discard(unpack(pos_l))
+	for k,v in ipairs(pos_l) do
+		discard(v)
+	end
 end)
 local vmanip
 minetest.after(0,function()
@@ -231,7 +233,8 @@ end)
 
 local process_block
 do
-	local p1,p2,data,data1,data2 = nil,nil,{},{},{}
+	local p1,p2,vp1,vp2
+	local data,data1,data2 = {},{},{}
 	local cids={}
 	local function fromcid(cid)
 		if cids[cid] then return cids[cid] end
@@ -245,7 +248,7 @@ do
 		local gg={}
 		for k,v in pairs((def and def.groups) or {}) do
 			if v>0 then
-				gg["group:"..k]=true
+				gg[#gg+1]="group:"..k
 			end
 		end
 		grs[name]=gg
@@ -257,37 +260,48 @@ do
 		return z*(w*h)+y*(w)+x+1
 	end
 	local vec
-	function process_block(bp)
-		p1=newvec(bp.x*16,bp.y*16,bp.z*16,p1)
-		p2=newvec(bp.x*16+15,bp.y*16+15,bp.z*16+15,p2)
-		--[[local e1,e2=vmanip:read_from_map(p1,p2)
+	function process_block(bps,bp1,bp2,blocks)
+		vp1=newvec(bp1.x*16,bp1.y*16,bp1.z*16,vp1)
+		vp2=newvec(bp2.x*16+15,bp2.y*16+15,bp2.z*16+15,vp2)
+		local vmanip=VoxelManip(vp1,vp2)
+		local e1,e2=vmanip:get_emerged_area()
 		vmanip:get_data(data)
 		vmanip:get_light_data(data1)
-		vmanip:get_param2_data(data2)]]
-		local block={map={},name={},param2={},param1={}}
-		for z=p1.z,p2.z do
-		for y=p1.y,p2.y do
-		for x=p1.x,p2.x do
-			--local i=pti(x,y,z,e1,e2)
-			vec=newvec(x,y,z,vec)
-			local node=minetest.get_node(vec)
-			local name=node.name
-			local pi=lib.pos_to_id(vec)
-			block.name[pi]=name
-			block.param2[pi]=node.param2
-			block.param1[pi]=node.param1
-			block.map[name]=pi
-			for k,v in pairs(groups(name)) do
-				block.map[k]=pi
-			end
-		end end end
-		return block
+		vmanip:get_param2_data(data2)
+		for k,v in pairs(bps) do
+			local bp=v
+			p1=newvec(bp.x*16,bp.y*16,bp.z*16,p1)
+			p2=newvec(bp.x*16+15,bp.y*16+15,bp.z*16+15,p2)
+			local block={map={},name={},param2={},param1={}}
+			local pi=1
+			for z=p1.z,p2.z do
+			for y=p1.y,p2.y do
+			local i=pti(p1.x,y,z,e1,e2)
+			for x=p1.x,p2.x do
+				local i=i+(x-p1.x)
+				local cid=data[i]
+				local name=cids[cid] or minetest.get_name_from_content_id(cid)
+				local param2,param1=data2[i],data1[i]
+				cids[cid]=name
+				block.name[pi]=name
+				block.param2[pi]=param2
+				block.param1[pi]=param1
+				block.map[name]=pi
+				local gg=groups(name)
+				for n=1,#gg do
+					local k=gg[n]
+					block.map[k]=pi
+				end
+				pi=pi+1
+			end end end
+			blocks[k]=v
+		end
 	end
-
 end
 
 local pactives={}
 local actives
+local blocks={}
 
 minetest.register_globalstep(function(dt)
 	local sta=minetest.get_us_time()
@@ -299,34 +313,60 @@ minetest.register_globalstep(function(dt)
 		nextref=sta+0.5*1000000
 	end
 
-	local blocks={}
 	local dirty={}
 	local acn=0
 
+	local blkve
 	for k,v in pairs(actives) do
 		local a,b,c,d={},{},{},{}
 		if refing or isactive(k,v) then
 			pactives[k]=nil
 			acn=acn+1
 			if not clean[k] then
-				blocks[k]=process_block(v)
-				clean[k]=true
+				blkve=newvec((v.x-2)/5,(v.y-2)/5,(v.z-2)/5,blkve)
+				local i=postoid(blkve)
+				local dr=dirty[i] or {mi=newvec(inf,inf,inf),ma=newvec(-inf,-inf,-inf),blocks={}}
+				dirty[i]=dr
+				local mi,ma=dr.mi,dr.ma
+				dr.mi=newvec(min(mi.x,v.x),min(mi.y,v.y),min(mi.z,v.z),mi)
+				dr.ma=newvec(max(ma.x,v.x),max(ma.y,v.y),max(ma.z,v.z),ma)
+				dr.blocks[k]=v
 			end
 		else
 			actives[k]=nil
 		end
 	end
+	local nn=0
+	local chn=0
+	local ssta=minetest.get_us_time()
+
+	for k,v in pairs(dirty) do
+		process_block(v.blocks,v.mi,v.ma,blocks)
+		for k,v in pairs(v.blocks) do
+			clean[k]=true
+			nn=nn+1
+		end
+		chn=chn+1
+		local eend=minetest.get_us_time()
+		local time=(eend-ssta)/1000
+		dirty[k]=nil
+		if time>=20 then break end
+	end
+	local racn=acn
+	for k,v in pairs(dirty) do
+		for k,v in pairs(v.blocks) do
+			if actives[k] then
+				actives[k]=nil
+				acn=acn-1
+			end
+		end
+	end
 
 	local ends=minetest.get_us_time()
-	local time=(ends-sta)/1000000
-	insert(times,time)
-	if #times>1 then remove(times,1) end
-	local ff=0
-	for k,v in ipairs(times) do
-		ff=ff+v
-	end
-	ff=ff/#times
-	minetest.chat_send_all(M("%.6fs %i blocks active; from %i to %i"):format(ff,acn,-r,r)())
+	local time=(ends-sta)/1000
+	--if nn>0 then
+		minetest.chat_send_all(M("%.6fms %i/%i blocks active; %i blocks processed (%i chunks)"):format(time,acn,racn,nn,chn)())
+	--end
 end)
 
 

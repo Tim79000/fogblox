@@ -155,7 +155,7 @@ function E.game.grassable(pos)
 	return true
 end
 
-minetest.register_abm {
+--[[minetest.register_abm {
 	label = "grass spread",
 	nodenames = {mn..":dirt_with_grass"},
 	chance = 16,
@@ -176,7 +176,7 @@ minetest.register_abm {
 		if #gdirts==0 then return end
 		minetest.set_node(gdirts[random(#gdirts)],{name=mn..":dirt_with_grass"})
 	end
-}
+}]]
 
 reg {
 	description = "Sand",
