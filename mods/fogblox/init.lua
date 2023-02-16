@@ -116,9 +116,9 @@ local include = function(n)
 	return E.include("modules."..n)
 end
 
+include("active")
 include("util")
 include("crafting")
 include("player")
-include("terrain")
-include("flora")
-include("tool")
+include("nature")
+include("tech")

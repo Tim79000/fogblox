@@ -1,0 +1,3 @@
+[submodule "mods/advfload"]
+	path = mods/advfload
+	url = https://gitlab.com/Kimapr/advfload

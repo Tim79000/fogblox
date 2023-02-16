@@ -64,6 +64,7 @@ logdef={
 		paramtype2 = "facedir",
 		groups = {
 			choppy = 2,
+			flammable = 4,
 		},
 		tiles = {
 			tex"bark"..r2,tex"bark",
@@ -97,6 +98,7 @@ local function floodfill_tree(pos,limit)
 		ltt=true
 	end
 	local leaves,trunks={},{}
+	local ignores={}
 	while next(to) do
 		local newto={}
 		for pos,t in pairs(to) do
@@ -110,6 +112,9 @@ local function floodfill_tree(pos,limit)
 				dir = minetest.facedir_to_dir(node.param2)
 				dirs = gtfillds(dir)
 				trunks[pos]=true
+			end
+			if t=="ignore" then
+				ignores[pos]=true
 			end
 			if limit==0 then
 				dirs={}
@@ -141,6 +146,10 @@ local function floodfill_tree(pos,limit)
 					if not ltt and tt=="tree" and src~="tree" then
 						tt=false
 					end
+					if node.name=="ignore" then
+						tt="ignore"
+						limit=1
+					end
 					if tt then
 						newto[pos]={tt,limit=limit-1,src=t}
 					end
@@ -149,11 +158,12 @@ local function floodfill_tree(pos,limit)
 		end
 		to=newto
 	end
-	return leaves,trunks
+	return leaves,trunks,ignores
 end
 
 local function checkleaf(pos)
-	local leaves,trunks=floodfill_tree(pos,10)
+	local leaves,trunks,ignores=floodfill_tree(pos,10)
+	if next(ignores) then return true end
 	for tpos,_ in pairs(trunks) do
 		local dist=0
 		vector.apply(vector.subtract(pos,tpos),function(a)
@@ -167,8 +177,8 @@ end
 minetest.register_abm {
 	label="leaf decay",
 	nodenames=mn..":leaves",
-	interval=2,
-	chance=4,
+	interval=4,
+	chance=8,
 	action=function(pos,node)
 		if not checkleaf(pos) then
 			minetest.remove_node(pos)
@@ -182,7 +192,8 @@ local diggin=false
 minetest.register_node(mn..":tree",E.underride({
 		description = "Tree",
 		groups = {
-			tree_trunk = 1
+			tree_trunk = 1,
+			flammable = 1,
 		},
 		drop=mn..":log",
 		after_dig_node=function(pos,node,meta,digger)
@@ -204,6 +215,14 @@ minetest.register_node(mn..":tree",E.underride({
 			end
 			diggin=false
 		end,
+		on_burn=function(pos,node)
+			local leaves,trunks=floodfill_tree(pos,1)
+			trunks[next(trunks)]=nil
+			if next(trunks) then
+				return
+			end
+			return true
+		end,
 		on_punch = function(pos,node)
 			local leaves,trunks = floodfill_tree(pos)
 			for pos,_ in pairs(leaves) do
@@ -223,8 +242,16 @@ minetest.register_node(mn..":tree",E.underride({
 minetest.register_node(mn..":root",{
 		description = "Tree Root",
 		groups = {
-			choppy = 4
+			choppy = 4,
+			flammable=5,
 		},
+		on_burn=function(pos)
+			local above=vector.add(pos,vector.new(0,1,0))
+			local node=minetest.get_node(above)
+			if node.name==mn..":tree" then return end
+			return true
+		end,
+		drop=mn..":stick 8",
 		tiles = {
 			tex"tree_top",tex"dirt",
 			tex"dirt".."^("..tex"bark".."^[mask:"..tex("roots_mask")..")"
@@ -245,6 +272,7 @@ minetest.register_node(mn..":leaves",{
 		groups = {
 			leaves = 1,
 			snappy = 1,
+			flammable=1,
 		},
 		tiles = {tex"leaves".."^[mask:"..tex("leaves_mask")},
 		sounds = lsound
@@ -266,6 +294,7 @@ minetest.register_node(mn..":sapling",{
 	groups = {
 		snappy = 1,
 		attached_node = 1,
+		flammable=1,
 	},
 	after_place_node = function(pos,pl,stack,pointed)
 		local under = vector.add(pos,vector.new(0,-1,0))

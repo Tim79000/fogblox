@@ -53,7 +53,7 @@ E.game.register_craft {
 minetest.register_node(mn..":plank",{
 	description="Plank",
 	tiles={tex"planks"},
-	groups={choppy=1}
+	groups={choppy=1,flammable=3}
 })
 
 E.game.register_craft {

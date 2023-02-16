@@ -71,6 +71,7 @@ regliquid {
 	description = "Water",
 	groups = {
 		water = 1,
+		fire_snuff = 1,
 	},
 	pointable = false,
 	diggable = false,
@@ -157,9 +158,8 @@ end
 minetest.register_abm {
 	label = "grass spread",
 	nodenames = {mn..":dirt_with_grass"},
-	neighbors = {"group:soil"},
-	chance = 4,
-	interval = 2,
+	chance = 16,
+	interval = 4,
 	action = function(pos,node)
 		local grass=E.game.grassable(pos)
 		if grass==nil then minetest.set_node(pos,{name=mn..":dirt"}) end
