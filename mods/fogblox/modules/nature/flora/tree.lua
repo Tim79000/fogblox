@@ -501,7 +501,7 @@ minetest.register_node(mn..":sapling",{
 		local scor=meta:get_int("sapling_growth")
 		scor=scor+1
 		meta:set_int("sapling_growth",scor)
-		if scor>=1 then
+		if scor>=5 then
 			minetest.remove_node(pos)
 			pos=vector.add(pos,vector.new(0,-1,0))
 			gentree(pos,realplace,realcheck,rander(seeds[random(1,#seeds)]))
