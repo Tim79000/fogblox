@@ -174,19 +174,6 @@ local function checkleaf(pos)
 	return false
 end
 
---[[minetest.register_abm {
-	label="leaf decay",
-	nodenames=mn..":leaves",
-	interval=4,
-	chance=8,
-	action=function(pos,node)
-		if not checkleaf(pos) then
-			minetest.remove_node(pos)
-			leafdrop(pos)
-		end
-	end,
-}]]
-
 local diggin=false
 
 minetest.register_node(mn..":tree",E.underride({
@@ -268,6 +255,12 @@ minetest.register_node(mn..":leaves",{
 		drop = "",
 		after_dig_node = function(pos,onode,ometa,digger)
 			leafdrop(pos,digger)
+		end,
+		on_randomstep=function(pos,node)
+			if not checkleaf(pos) then
+				minetest.remove_node(pos)
+				leafdrop(pos)
+			end
 		end,
 		groups = {
 			leaves = 1,

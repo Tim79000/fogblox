@@ -16,67 +16,7 @@ local unpack,remove,insert,floor,min,max,inf,random,format,sub =
 
 --[==[--
 
-block = {
-	pos = blockpos,
-	-- i = (z*(w*h)+y*(w)+x+1) from mapblock origin
-	map = {
-		["game:dirt"] = {[i]=true,...},
-		["group:cracky"] = {...},
-		...
-	},
-	name = {
-		[i] = "game:dirt",
-		...
-	}
-	param2 = {
-		[i] = 42,
-		...
-	},
-	param1 = {
-		[i] = 13,
-		...
-	}
-	objects={
-		[i]={ObjectRef,...},
-		...
-	}
-}
-
-blki = lib.blockpos_to_id(blockpos)
-blockpos = lib.id_to_blockpos(blki,reused_vec)
-
-lib.register_localstep {
-	label = "label",
-	interval = 1,
-	step_type = "smooth", -- "burst" - calls on_step every `interval` seconds on all active blocks
-	                      -- "smooth" - calls on_step every step on a part of active blocks
-	                      -- (so that all blocks are processed every `interval` seconds)
-	on_prestep = function({
-		blocks={[blki]=block,...}, -- all the blocks
-		dirty_blocks={[blki]=block,...}, -- blocks that were changed previously
-		dead_blocks={[blki]=true,...}, -- completely unloaded blocks
-		block_index={                  -- (more blocks might get deactivated due to prestep however)
-			["game:dirt"]={[blki]=block,...},
-			["group:cracky"]={...},
-			...
-		},
-		activate_deps={...}
-	})
-		activate_deps[blki].emerge[blki2]=true
-			-- requires blki2 to be loaded (but not necessarily active) to activate blki
-		activate_deps[blki].activate[blki2]=true
-			-- requires blki2 to be active
-		activate_deps[blki].force=false
-			-- will forceload/emerge the blocks
-		...
-	end,
-	on_step = function({
-		dt=1/20,
-		blocks={...},
-		active_blocks={[blki]=block,...}, -- blocks you should operate on
-		block_index={...}
-	}),
-}
+lib.register_localstep(function(dt,active_blocks))
 
 --]==]--
 
@@ -95,6 +35,10 @@ local function newvec(x,y,z,vec)
 	vec.x,vec.y,vec.z=x,y,z
 	return vec
 end
+local function roundvec(vec)
+	return newvec(floor(vec.x+0.5),floor(vec.y+0.5),floor(vec.z+0.5),vec)
+end
+
 local function idtopos(i,pos)
 	local z,y,x=floor(i/t32)-t15,floor(i%t32/t16)-t15,i%t16-t15
 	return newvec(x,y,z,pos)
@@ -104,6 +48,23 @@ local function postoid(pos)
 	local i=z*t32+y*t16+x
 	return i
 end
+local function inb_idtopos(bp,i,pos)
+	i=i-1
+	local x,y,z
+	x,y,z=i%16,floor(i%(256)/16),floor(i/(256))
+	x,y,z=x+bp.x*16,y+bp.y*16,z+bp.z*16
+	pos=newvec(x,y,z,pos)
+	return pos
+end
+local function inb_postoid(bp,pos)
+	local x,y,z=pos.x-bp.x*16,pos.y-bp.y*16,pos.z-bp.z*16
+	return z*256+y*16+x+1
+end
+lib.hash_pos=postoid
+lib.dehash_pos=idtopos
+lib.hash_inbpos=inb_postoid
+lib.dehash_inbpos=inb_idtopos
+
 local function id2str(i)
 	return format("__actl%x",i)
 end
@@ -146,31 +107,11 @@ local r=max(
 
 local clean={}
 
-lib.blockpos_to_id=postoid
-lib.id_to_blockpos=idtopos
-
-function lib.id_to_pos(bp,i,pos)
-	i=i-1
-	local x,y,z
-	x,y,z=i%16,floor(i%(256)/16),floor(i/(256))
-	x,y,z=x+bp.x*16,y+bp.y*16,z+bp.z*16
-	pos=newvec(x,y,z,pos)
-	return pos
-end
-
-function lib.pos_to_id(bp,pos)
-	local x,y,z=pos.x-bp.x*16,pos.y-bp.y*16,pos.z-bp.z*16
-	return z*256+y*16+x+1
-end
-local inb_idtopos,inb_postoid=lib.id_to_pos,lib.pos_to_id
-
 lib.registered_localsteps={}
 
 local nextref=minetest.get_us_time()
 local function refresh()
 	local actives={}
-	local sactives={}
-	local ractives={}
 	local vec={}
 	for _,ref in pairs(minetest.get_connected_players()) do
 		local pos=ref:get_pos()
@@ -184,12 +125,10 @@ local function refresh()
 			if isactive(vec) and not actives[id] then
 				local vec=vector.new(vec)
 				actives[id]=vec
-				ractives[id]=vec
 			end
 		end end end
 	end
 	for k,v in pairs(advfload.query()) do
-		local sid=str2id(k)
 		for x=v.pos1.x,v.pos2.x do
 		for y=v.pos1.y,v.pos2.y do
 		for z=v.pos1.z,v.pos2.z do
@@ -198,16 +137,10 @@ local function refresh()
 			if isactive(vec) and not actives[id] then
 				local vec=vector.new(vec)
 				actives[id]=vec
-				if sid then
-					assert(id==sid)
-					ractives[id]=vec
-				else
-					sactives[id]=vec
-				end
 			end
 		end end end
 	end
-	return actives,ractives,sactives
+	return actives
 end
 
 local bpc=vector.new(0,0,0)
@@ -333,7 +266,7 @@ do
 	end
 end
 
-local actives,ractives,sactives
+local actives
 local floads,emerges={},{}
 local blocks={}
 
@@ -350,228 +283,83 @@ minetest.register_globalstep(function(dt)
 	local sta=minetest.get_us_time()
 	local refing=not actives or nextref<=sta
 	if refing then
-		actives,ractives,sactives=refresh()
-		nextref=sta+2*1000000
+		actives=refresh()
+		nextref=sta+0.5*1000000
 	end
 
 	while cc>=1 do
 		local dt=1/steprate
 		cc=cc-1
-		local dirty={}
-
-		local blkve
-		local acts=actives
-		local actives={}
-		for k,v in pairs(acts) do
-			local a,b,c,d={},{},{},{}
-			if refing or isactive(v) then
-				actives[k]=v
-				if not clean[k] then
-					blkve=newvec((v.x-2)/5,(v.y-2)/5,(v.z-2)/5,blkve)
-					local i=postoid(blkve)
-					local dr=dirty[i] or {mi=newvec(inf,inf,inf),ma=newvec(-inf,-inf,-inf),blocks={}}
-					dirty[i]=dr
-					local mi,ma=dr.mi,dr.ma
-					dr.mi=newvec(min(mi.x,v.x),min(mi.y,v.y),min(mi.z,v.z),mi)
-					dr.ma=newvec(max(ma.x,v.x),max(ma.y,v.y),max(ma.z,v.z),ma)
-					dr.blocks[k]=v
-				end
-			end
-		end
-
-		local changed={}
-		for k,v in pairs(dirty) do
-			process_block(v.blocks,v.mi,v.ma,blocks)
-			for k,v in pairs(v.blocks) do
-				clean[k]=true
-				changed[k]=blocks[k]
-			end
-		end
-		local index={}
-		local dead={}
-		for blkid,block in pairs(blocks) do
-			if isloaded(block.pos) then
-				for name,_ in pairs(block.map) do
-					index[name]=index[name] or {}
-					index[name][blkid]=true
-				end
-				block.objects={}
-			else
-				dead[blkid]=true
-				blocks[blkid]=nil
-				clean[blkid]=nil
-			end
-		end
-		for k,v in pairs(minetest.object_refs) do
-			local pos=v:get_pos()
-			if pos then
-				pos=vector.round(pos)
-				local bp=vector.divide(pos,16)
-				local i=postoid(bp)
-				local pi=inb_postoid(vector.floor(bp),pos)
-				local obj=blocks[i]
-				if obj then
-					obj=obj.objects
-					local objpi=obj[pi] or {}
-					obj[pi]=objpi
-					objpi[#objpi+1]=v
-				end
-			end
-		end
-
-		local deps=setmetatable({},{
-			__index=function(deps,k)
-				if not actives[k] then return nil end
-				deps[k]={
-					blkid=k,
-					emerge={},
-					activate={},
-					force=true
+		local acts={}
+		for i,bp in pairs(actives) do
+			if isactive(bp) then
+				acts[i]={
+					pos=bp,
+					objects={}
 				}
-				return deps[k]
-			end})
-		local arg={
-			blocks=blocks,
-			dirty_blocks=changed,
-			dead_blocks=dead,
-			block_index=index,
-			activate_deps=deps,
-		}
+			end
+		end
+		for _,ref in pairs(minetest.object_refs) do
+			local pos=ref:get_pos()
+			if pos then
+				pos=roundvec(pos,pos)
+				local bp=newvec(floor(pos.x/16),floor(pos.y/16),floor(pos.z/16))
+				local blki=postoid(bp)
+				local pi=inb_postoid(bp,pos)
+				local objs=acts[blki]
+				objs=objs and objs.objects
+				if objs then
+					local pobjs=objs[pi] or {}
+					objs[pi]=pobjs
+					pobjs[ref]=true
+				end
+			end
+		end
+		for i,fn in pairs(lss) do
+			fn(dt,actives)
+		end
+	end
+end)
 
-		for _,ls in ipairs(lss) do
-			ls.on_prestep(arg)
+local lazrands={}
+local function lazrand(blki)
+	local lr=lazrands[blki]
+	if not lr then
+		lr={expiry=4,data={},i=1}
+		lazrands[blki]=lr
+		local x=lr.data
+		for n=1,4096 do
+			local l=#x+1
+			local i=random(l)
+			if i~=l then
+				x[i],x[l]=n,x[i]
+			else
+				x[i]=n
+			end
 		end
+	end
+	if lr.expiry==0 then
+		lazrands[blki]=nil
+		return lazrand(blki)
+	end
+	local r=lr.data[lr.i]
+	lr.i=lr.i+1
+	if lr.i>4096 then
+		lr.i=1
+		lr.expiry=lr.expiry-1
+	end
+	return r
+end
 
-		local tofload={}
-		local erdeps={}
-		local ardeps={}
-		for dblki,dep in pairs(deps) do
-			local hard=dep.force
-			for blki,_ in pairs(dep.emerge) do
-				erdeps[blki]=erdeps[blki] or {kill={},hard=false,pos=idtopos(blki)}
-				erdeps[blki].hard=erdeps[blki].hard or hard
-				erdeps[blki].kill[dblki]=true
-			end
-			for blki,_ in pairs(dep.activate) do
-				ardeps[blki]=ardeps[blki] or {kill={},hard=false,pos=idtopos(blki)}
-				ardeps[blki].hard=ardeps[blki].hard or hard
-				ardeps[blki].kill[dblki]=true
-			end
-		end
-		for blki,dep in pairs(erdeps) do
-			if not isloaded(dep.pos) then
-				if dep.hard then emerge(dep.pos) end
-				for blki,v in pairs(dep.kill) do
-					actives[blki]=nil
-				end
-			end
-		end
-		for blki,dep in pairs(ardeps) do
-			if not isactive(dep.pos) then
-				if dep.hard then floads[blki]=dep.pos forceload(dep.pos) end
-				for blki,v in pairs(dep.kill) do
-					actives[blki]=nil
-				end
-			end
-		end
-		if refing then
-			local pp
-			local bad={}
-			local notbad={}
-			local to,seen={},{}
-			for k,v in pairs(floads) do
-				bad[k]=v
-				to[blki]={[blki]=true}
-			end
-			while next(to) do
-				local cblki,pl=next(to)
-				to[cblki]=nil
-				if not seen[cblki] then
-					if ractives[cblki] then
-						for k,_ in pairs(pl) do
-							notbad[pl]=true
-						end
-					else
-						seen[cblki]=true
-						pl[cblki]=true
-						if ardeps[cblki] then
-							for k,_ in pairs(ardeps[cblki].kill) do
-								to[k]=pl
-							end
-						end
-					end
-				end
-			end
-			for k,v in pairs(notbad) do
-				for k,v in pairs(v) do
-					bad[k]=nil
-				end
-			end
-			for k,v in pairs(bad) do
-				floads[k]=nil
-				unforceload(v)
-			end
-		end
-		local a={}
-		local acblocks={}
-		local actc=0
-		for k,v in pairs(actives) do
-			assert(blocks[k])
-			local ma=#a+1
-			local ii=random(ma)
-			local olv=a[ii]
-			a[ii]={k,blocks[k]}
-			if ii~=ma then
-				a[ma]=olv
-			end
-			acblocks[k]=blocks[k]
-			actc=actc+1
-		end
-		local arg={
-			dt=dt,
-			blocks=blocks,
-			block_index=index,
-		}
-		local bint={}
-		local sint={}
-		for _,ls in pairs(lss) do
-			local act
-			local st=ls.step_type or "smooth"
-			if st=="burst" then
-				if bint[ls.interval]~=nil then
-					act=bint[ls.interval] and actives or nil
-				else
-					local int=bints[ls.interval] or {cc=ls.interval}
-					bints[ls.interval]=int
-					int.cc=int.cc+dt
-					local c=false
-					if int.cc>=ls.interval then
-						int.cc=int.cc-ls.interval
-						act=acblocks
-						c=true
-					end
-					bint[ls.interval]=c
-				end
-			elseif st=="smooth" then
-				if sint[ls.interval] then
-					act=sint[ls.interval]
-				else
-					local int=sints[ls.interval] or {cc=0}
-					int.cc=int.cc+dt*actc/ls.interval
-					local cc=floor(int.cc)
-					int.cc=int.cc-cc
-					local acts={}
-					for n=1,cc do
-						local v=a[n]
-						acts[v[1]]=v[2]
-					end
-					sint[ls.interval]=acts
-					act=acts
-				end
-			end
-			if act then
-				arg.active_blocks=act
-				ls.on_step(arg)
+lib.register_localstep(function(dt,blocks)
+	for i,bp in pairs(blocks) do
+		for n=1,4 do
+			local pi=lazrand(i)
+			local pos=inb_idtopos(bp,pi)
+			local node=minetest.get_node(pos)
+			local def=minetest.registered_nodes[node.name]
+			if def.on_randomstep then
+				def.on_randomstep(pos,node)
 			end
 		end
 	end
