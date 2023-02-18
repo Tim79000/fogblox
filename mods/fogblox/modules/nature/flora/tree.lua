@@ -174,7 +174,7 @@ local function checkleaf(pos)
 	return false
 end
 
-minetest.register_abm {
+--[[minetest.register_abm {
 	label="leaf decay",
 	nodenames=mn..":leaves",
 	interval=4,
@@ -185,7 +185,7 @@ minetest.register_abm {
 			leafdrop(pos)
 		end
 	end,
-}
+}]]
 
 local diggin=false
 

@@ -141,43 +141,6 @@ reg {
 	sounds = E.game.gsounds("grass")
 }
 
-function E.game.grassable(pos)
-	local above=vector.add(pos,vector.new(0,1,0))
-	local light=minetest.get_node_light(above,0.5)
-	if not light then return false end
-	if light<10 then
-		return nil
-	end
-	local node=minetest.get_node(pos)
-	if not E.check_groups(node.name,{soil=true}) then
-		return false
-	end
-	return true
-end
-
---[[minetest.register_abm {
-	label = "grass spread",
-	nodenames = {mn..":dirt_with_grass"},
-	chance = 16,
-	interval = 4,
-	action = function(pos,node)
-		local grass=E.game.grassable(pos)
-		if grass==nil then minetest.set_node(pos,{name=mn..":dirt"}) end
-		local mi,ma=
-			vector.add(pos,vector.new(-1,-1,-1)),
-			vector.add(pos,vector.new(1,1,1))
-		local dirts=minetest.find_nodes_in_area(mi,ma,{"group:soil"})
-		local gdirts={}
-		for k,v in pairs(dirts) do
-			if E.game.grassable(v) then
-				gdirts[#gdirts+1]=v
-			end
-		end
-		if #gdirts==0 then return end
-		minetest.set_node(gdirts[random(#gdirts)],{name=mn..":dirt_with_grass"})
-	end
-}]]
-
 reg {
 	description = "Sand",
 	groups = {

@@ -103,7 +103,7 @@ function E.include(name)
 		enved=true
 		return M(a):sub(1,-4)()..envin
 	end)()
-	data = "local E,include=...;local M=E.mstr;local _G=E._G;"
+	data = "local E,include=...;local M,L,_G=E.mstr,E.L,E._G;"
 	..(not enved and M(envin):sub(1,-4)() or "")	
 	..data
 	local fn = assert(loadstring(data,M(name):gsub("^modules",E.modname)()))
