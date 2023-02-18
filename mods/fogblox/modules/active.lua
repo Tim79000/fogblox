@@ -277,8 +277,8 @@ local sints={}
 
 minetest.register_globalstep(function(dt)
 	cc=cc+dt*steprate
-	if cc>3 then
-		cc=3
+	if cc>5 then
+		cc=5
 	end
 	local sta=minetest.get_us_time()
 	local refing=not actives or nextref<=sta

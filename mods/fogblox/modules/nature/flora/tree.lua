@@ -271,34 +271,6 @@ minetest.register_node(mn..":leaves",{
 		sounds = lsound
 })
 
-minetest.register_node(mn..":sapling",{
-	description = "Sapling",
-	drawtype = "plantlike",
-	paramtype = "light",
-	sunlight_propagates = true,
-	walkable = false,
-	selection_box={
-		type = "fixed",
-		fixed = {
-			-0.3,-0.5,-0.3,
-			0.3,0.4,0.3
-		}
-	},
-	groups = {
-		snappy = 1,
-		attached_node = 1,
-		flammable=1,
-	},
-	after_place_node = function(pos,pl,stack,pointed)
-		local under = vector.add(pos,vector.new(0,-1,0))
-		local unode = minetest.get_node(under)
-		local soil = minetest.get_item_group(unode.name,"soil")
-		if soil<1 then minetest.remove_node(pos) return true end
-	end,
-	inventory_image = tex"sapling",
-	tiles = {tex"sapling"}
-})
-
 minetest.register_craftitem(mn..":stick",{
 		description = "Stick",
 		inventory_image = tex "stick",
@@ -509,4 +481,43 @@ minetest.register_chatcommand("growtree",{
 		local pos=vector.round(ref:get_pos())
 		gentree(pos,realplace,realcheck,rander(seeds[random(1,#seeds)]))
 	end
+})
+
+minetest.register_node(mn..":sapling",{
+	description = "Sapling",
+	drawtype = "plantlike",
+	paramtype = "light",
+	sunlight_propagates = true,
+	walkable = false,
+	selection_box={
+		type = "fixed",
+		fixed = {
+			-0.3,-0.5,-0.3,
+			0.3,0.4,0.3
+		}
+	},
+	on_randomstep=function(pos,node)
+		local meta=minetest.get_meta(pos)
+		local scor=meta:get_int("sapling_growth")
+		scor=scor+1
+		meta:set_int("sapling_growth",scor)
+		if scor>=1 then
+			minetest.remove_node(pos)
+			pos=vector.add(pos,vector.new(0,-1,0))
+			gentree(pos,realplace,realcheck,rander(seeds[random(1,#seeds)]))
+		end
+	end,
+	groups = {
+		snappy = 1,
+		attached_node = 1,
+		flammable=1,
+	},
+	after_place_node = function(pos,pl,stack,pointed)
+		local under = vector.add(pos,vector.new(0,-1,0))
+		local unode = minetest.get_node(under)
+		local soil = minetest.get_item_group(unode.name,"soil")
+		if soil<1 then minetest.remove_node(pos) return true end
+	end,
+	inventory_image = tex"sapling",
+	tiles = {tex"sapling"}
 })
