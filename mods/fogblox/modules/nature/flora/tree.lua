@@ -18,6 +18,10 @@ E.game.leafdrops={
 	{
 		chance = 0.06,
 		item = mn..":stick"
+	},
+	{
+		chance = 0.005,
+		item = mn..":apple"
 	}
 }
 
@@ -171,7 +175,7 @@ local function checkleaf(pos)
 		end)
 		if dist<=3 then return true end
 	end
-	return false
+	return false,leaves
 end
 
 local diggin=false
@@ -483,6 +487,13 @@ minetest.register_chatcommand("growtree",{
 	end
 })
 
+minetest.register_craftitem(mn..":apple",{
+	description = "Tree Fruit",
+	inventory_image = tex "apple",
+	on_use = minetest.item_eat(2),
+	stack_max = 1
+})
+
 minetest.register_node(mn..":sapling",{
 	description = "Sapling",
 	drawtype = "plantlike",
@@ -497,14 +508,18 @@ minetest.register_node(mn..":sapling",{
 		}
 	},
 	on_randomstep=function(pos,node)
-		local meta=minetest.get_meta(pos)
-		local scor=meta:get_int("sapling_growth")
-		scor=scor+1
-		meta:set_int("sapling_growth",scor)
-		if scor>=5 then
-			minetest.remove_node(pos)
-			pos=vector.add(pos,vector.new(0,-1,0))
-			gentree(pos,realplace,realcheck,rander(seeds[random(1,#seeds)]))
+		local below=vector.add(pos,vector.new(0,-1,0))
+		local bnode=minetest.get_node(below)
+		local light=minetest.get_node_light(pos)
+		if minetest.get_item_group(bnode.name,"soil")>0 and light>10 then
+			local meta=minetest.get_meta(pos)
+			local scor=meta:get_int("sapling_growth")
+			scor=scor+1
+			meta:set_int("sapling_growth",scor)
+			if scor>=5 then
+				minetest.remove_node(pos)
+				gentree(below,realplace,realcheck,rander(seeds[random(1,#seeds)]))
+			end
 		end
 	end,
 	groups = {
