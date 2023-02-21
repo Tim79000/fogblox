@@ -264,7 +264,6 @@ function E.game.on_inventory_receive_fields(ref,fields)
 					}
 				end
 				local out=recipe:craft(ll,ref)
-				_G.print(_G.dump{"crafting!",out})
 				for n=1,#ll do
 					list[n]=ll[n]
 				end

@@ -43,10 +43,21 @@ E.game.register_craft {
 	output={mn..":sharpstick",mn..":pebble"},
 	toolworn={1}
 }
+E.game.register_craft {
+	input={"group:tool_shovel1",mn..":dirt"},
+	output={"group:tool_shovel1",mn..":pebble 2"},
+	toolworn={1}
+}
 
 E.game.register_craft {
 	input={"group:tool_pick1",mn..":cobble"},
 	output={"group:tool_pick1",mn..":gravel",mn..":pebble 4"},
+	toolworn={1},
+}
+
+E.game.register_craft {
+	input={"group:tool_hammer1",mn..":pebble 8"},
+	output={"group:tool_hammer1",mn..":cobble"},
 	toolworn={1},
 }
 

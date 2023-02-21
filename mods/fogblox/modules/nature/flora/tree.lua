@@ -1,9 +1,11 @@
 --[
 local minetest,vector,pairs,next,PcgRandom
 =     minetest,vector,pairs,next,PcgRandom
-local max,abs,random,unpack =
+local max,abs,floor,ceil,random,unpack =
 	math.max,
 	math.abs,
+	math.floor,
+	math.ceil,
 	math.random,
 	unpack or table.unpack
 --]
@@ -12,15 +14,15 @@ local mn=E.modname
 local tex=E.tex
 E.game.leafdrops={
 	{
-		chance = 0.08,
+		chance = 0.04,
 		item = mn..":sapling"
 	},
 	{
-		chance = 0.06,
+		chance = 0.03,
 		item = mn..":stick"
 	},
 	{
-		chance = 0.005,
+		chance = 0.0025,
 		item = mn..":apple"
 	}
 }
@@ -81,12 +83,20 @@ end
 local lsound=E.game.gsounds("leaves")
 minetest.register_node(mn..":log",E.underride({
 	description = "Log",
+	after_place_node=function(pos,placer,stack,pointed)
+		if not pointed.under and pointed.above then return end
+		local dir=vector.subtract(pointed.above,pointed.under)
+		if vector.equals(dir,vector.new(0,0,0)) then return end
+		local node=minetest.get_node(pos)
+		node.param2=minetest.dir_to_facedir(vector.apply(dir,abs),true)
+		minetest.swap_node(pos,node)
+	end
 },logdef))
 
 local function floodfill_tree(pos,limit)
 	local node=minetest.get_node(pos)
 	local alldirs = tfillds
-	local seen = {[vector.to_string(pos)]=true}
+	local seen = {[E.game.hash_pos(pos)]=true}
 	local tt
 	local ltt=false
 	do
@@ -102,7 +112,7 @@ local function floodfill_tree(pos,limit)
 		ltt=true
 	end
 	local leaves,trunks={},{}
-	local ignores={}
+	local ignores=false
 	while next(to) do
 		local newto={}
 		for pos,t in pairs(to) do
@@ -125,7 +135,7 @@ local function floodfill_tree(pos,limit)
 			end
 			for k,v in pairs(dirs) do
 				local pos=vector.add(pos,v)
-				local ii=vector.to_string(pos)
+				local ii=E.game.hash_pos(pos)
 				if not seen[ii] then
 					seen[ii]=true
 					local node = minetest.get_node(pos)
@@ -152,7 +162,8 @@ local function floodfill_tree(pos,limit)
 					end
 					if node.name=="ignore" then
 						tt="ignore"
-						limit=1
+						ignores=true
+						return leaves,trunks,ignores
 					end
 					if tt then
 						newto[pos]={tt,limit=limit-1,src=t}
@@ -166,8 +177,13 @@ local function floodfill_tree(pos,limit)
 end
 
 local function checkleaf(pos)
-	local leaves,trunks,ignores=floodfill_tree(pos,10)
-	if next(ignores) then return true end
+	local node=minetest.get_node(pos)
+	local d=7
+	if node.name==mn..":leaves" and node.param2~=0 then
+		d=node.param2
+	end
+	local leaves,trunks,ignores=floodfill_tree(pos,d)
+	if ignores then return true end
 	for tpos,_ in pairs(trunks) do
 		local dist=0
 		vector.apply(vector.subtract(pos,tpos),function(a)
@@ -184,7 +200,6 @@ minetest.register_node(mn..":tree",E.underride({
 		description = "Tree",
 		groups = {
 			tree_trunk = 1,
-			flammable = 1,
 		},
 		drop=mn..":log",
 		after_dig_node=function(pos,node,meta,digger)
@@ -206,16 +221,20 @@ minetest.register_node(mn..":tree",E.underride({
 			end
 			diggin=false
 		end,
-		on_burn=function(pos,node)
-			local leaves,trunks=floodfill_tree(pos,1)
-			trunks[next(trunks)]=nil
-			if next(trunks) then
-				return
-			end
-			return true
+		on_randomstep=function(pos,node)
+			local p2=vector.subtract(pos,minetest.facedir_to_dir(node.param2,true))
+			local n2=minetest.get_node_or_nil(p2)
+			if not n2 then return end
+			n2=n2.name
+			if n2==mn..":tree" then return end
+			if n2==mn..":root" then return end
+			minetest.node_dig(pos,node)
+			local def=minetest.registered_items[node.name]
+			def.after_dig_node(pos,node)
 		end,
 		on_punch = function(pos,node)
-			local leaves,trunks = floodfill_tree(pos)
+			local leaves,trunks,ign = floodfill_tree(pos)
+			if ign then return end
 			for pos,_ in pairs(leaves) do
 				local meta=minetest.get_meta(pos)
 				local harrassment_timeout=meta:get_int("tshake_cooldown")
@@ -282,14 +301,17 @@ minetest.register_craftitem(mn..":stick",{
 
 local function realplace(pos,t,dir)
 	local node={}
-	if dir then
-		node.param2 = minetest.dir_to_facedir(dir,true)
-	end
 	if t=="root" then
 		node.name = mn..":root"
 	elseif t=="tree" then
+		if dir then
+			node.param2 = minetest.dir_to_facedir(dir,true)
+		end
 		node.name = mn..":tree"
 	elseif t=="leaves" then
+		if dir then
+			node.param2 = dir
+		end
 		node.name = mn..":leaves"
 	end
 	minetest.set_node(pos,node)
@@ -312,23 +334,33 @@ local function realrand(...)
 	return random(...)
 end
 
+local function randround(a,r)
+	local up,down=floor(a),ceil(a)
+	local cc=a-down
+	if r(1024)>=cc*1024 then
+		return down
+	else
+		return up
+	end
+end
+
 local function canopy(pos,r,place,check,rand)
 	for x=-r,r do for y=-r,r do for z=-r,r do
 		local xx,yy,zz=abs(x),abs(y),abs(z)
-		local bad = 
-			(xx==yy and xx==r) or
-			(yy==zz and yy==r) or
-			(xx==zz and zz==r)
+		local dist=xx+yy+zz
+		local rdist=((xx*xx+yy*yy+zz*zz)^0.5)
+		rdist=randround(rdist-0.5,rand)
+		local bad=rdist>r
 		if not bad then
 			local pos=vector.add(pos,vector.new(x,y,z))
 			local good=check(pos)
-			if good then place(pos,"leaves") end
+			if good then place(pos,"leaves",dist) end
 		end
 	end end end
 end
 
 local function branch(pos,dir,place,check,rand)
-	for n=1,rand(4,5) do
+	for n=1,4 do
 		pos = vector.add(pos,dir)
 		place(pos,"tree",dir)
 	end
@@ -349,18 +381,18 @@ local function gentree(pos,place,check,rand)
 	place = place or realplace
 	local dir = vector.new(0,1,0)
 	place(pos,"root",dir)
-	for n=1,rand(5,7) do
+	for n=1,rand(4,5) do
 		pos=vector.add(pos,dir)
 		if not check(pos) then return end
 		place(pos,"tree",dir)
 	end
 	local ddir
 	local branchc = rand(1,2)
-	local len = rand(15,18)
+	local len = rand(10,11)
 	local branches={}
 	for n=1,branchc do
 		local n
-		repeat n=rand(4,len-6) until not branches[n]
+		repeat n=rand(1,len-8) until not branches[n]
 		branches[n]=true
 	end
 	for n=1,len do
@@ -403,16 +435,19 @@ local function schem(rand)
 	end
 	local function place(pos,t,dir)
 		local node={}
-		if dir then
-			node.param2 = minetest.dir_to_facedir(dir,true)
-		end
 		if t=="root" then
 			node.name = mn..":root"
 			node.force_place = true
 		elseif t=="tree" then
+			if dir then
+				node.param2 = minetest.dir_to_facedir(dir,true)
+			end
 			node.name = mn..":tree"
 			node.force_place = true
 		elseif t=="leaves" then
+			if dir then
+				node.param2 = dir
+			end
 			node.name = mn..":leaves"
 			node.force_place = false
 		end
@@ -536,3 +571,26 @@ minetest.register_node(mn..":sapling",{
 	inventory_image = tex"sapling",
 	tiles = {tex"sapling"}
 })
+
+local one=vector.new(1,1,1)
+minetest.register_node(mn..":peat",{
+	description = "Peat",
+	tiles={tex"peat"},
+	groups={crumbly=1,flammable=2,falling_node=1},
+	on_randomstep=function(pos,node)
+		local mi,ma=vector.subtract(pos,one),vector.add(pos,one)
+		local dirts=minetest.find_nodes_in_area(mi,ma,{mn..":dirt"})
+		if #dirts==0 then return end
+		local n=mn..":dirt"
+		if E.game.grassable(pos) and random(20)==1 then
+			n=mn..":dirt_with_grass"
+		end
+		minetest.set_node(pos,{name=n})
+	end,
+})
+
+E.game.register_craft {
+	input={"group:tool_shovel1",mn..":sapling 8"},
+	output={"group:tool_shovel1",mn..":peat"},
+	toolworn={1}
+}

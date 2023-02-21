@@ -12,6 +12,7 @@ local dirtname=E.modname..":dirt"
 local soilgr="group:soil"
 
 local function grassgrow(pos,node)
+	if random(2)~=1 then return end
 	local grass=game.grassable(pos)
 	if grass==nil then minetest.set_node(pos,{name=dirtname}) end
 	local mi,ma=

@@ -101,7 +101,7 @@ end
 local times={}
 
 local r=max(
-	tonumber(minetest.settings:get("active_object_send_range_blocks") or 8),
+	--tonumber(minetest.settings:get("active_object_send_range_blocks") or 8),
 	tonumber(minetest.settings:get("active_block_range") or 4)
 )
 
@@ -271,9 +271,12 @@ local floads,emerges={},{}
 local blocks={}
 
 local cc=0
+local acn=0
 local steprate=20
 local bints={}
 local sints={}
+
+local tpsl={}
 
 minetest.register_globalstep(function(dt)
 	cc=cc+dt*steprate
@@ -287,16 +290,20 @@ minetest.register_globalstep(function(dt)
 		nextref=sta+0.5*1000000
 	end
 
+	local stepc=0
 	while cc>=1 do
 		local dt=1/steprate
 		cc=cc-1
+		stepc=stepc+1
 		local acts={}
+		acn=0
 		for i,bp in pairs(actives) do
-			if isactive(bp) then
+			if refing or isactive(bp) then
 				acts[i]={
 					pos=bp,
 					objects={}
 				}
+				acn=acn+1
 			end
 		end
 		for _,ref in pairs(minetest.object_refs) do
@@ -319,47 +326,67 @@ minetest.register_globalstep(function(dt)
 			fn(dt,actives)
 		end
 	end
-end)
-
-local lazrands={}
-local function lazrand(blki)
-	local lr=lazrands[blki]
-	if not lr then
-		lr={expiry=4,data={},i=1}
-		lazrands[blki]=lr
-		local x=lr.data
-		for n=1,4096 do
-			local l=#x+1
-			local i=random(l)
-			if i~=l then
-				x[i],x[l]=n,x[i]
-			else
-				x[i]=n
+	do
+		tpsl[#tpsl+1]={sta,1/dt,stepc}
+		if tpsl[1][1]<sta-1000000 then
+			local avg=0
+			local savg=0
+			local mi=inf
+			local ma=-inf
+			for k,v in ipairs(tpsl) do
+				mi=min(mi,v[2])
+				ma=max(ma,v[2])
+				avg=avg+v[2]
+				savg=savg+v[3]
 			end
+			avg=avg/#tpsl
+			savg=savg
+			local text=M("%.2f (%.2f to .%.2f) mtTPS; %.2f vTPS; active blocks: %i; cc: %.2f"):format(avg,mi,ma,savg,acn,cc)()
+			for k,v in pairs(minetest.get_connected_players()) do
+				local meta=v:get_meta()
+				if meta:get_int("fb_tpsc")>0 then
+					minetest.chat_send_player(v:get_player_name(),text)
+				end
+			end
+			tpsl={}
 		end
 	end
-	if lr.expiry==0 then
-		lazrands[blki]=nil
-		return lazrand(blki)
-	end
-	local r=lr.data[lr.i]
-	lr.i=lr.i+1
-	if lr.i>4096 then
-		lr.i=1
-		lr.expiry=lr.expiry-1
-	end
-	return r
-end
+end)
 
+minetest.register_chatcommand("tps",{
+	description="Toggle tps counter",
+	func=function(name)
+		local player=minetest.get_player_by_name(name)
+		if not player then return false,"Only for online players." end
+		local meta=player:get_meta()
+		local ac=meta:get_int("fb_tpsc")
+		local msg
+		if ac==0 then
+			ac=1
+			msg="TPS counter activated."
+		else
+			ac=0
+			msg="TPS counter deactivated."
+		end
+		meta:set_int("fb_tpsc",ac)
+		return true,msg
+	end
+})
+
+local bad={}
 lib.register_localstep(function(dt,blocks)
 	for i,bp in pairs(blocks) do
-		for n=1,4 do
-			local pi=lazrand(i)
+		for n=1,8 do
+			local pi=random(4096)
 			local pos=inb_idtopos(bp,pi)
-			local node=minetest.get_node(pos)
-			local def=minetest.registered_nodes[node.name]
-			if def.on_randomstep then
-				def.on_randomstep(pos,node)
+			local node=minetest.get_node_or_nil(pos)
+			if node and not bad[node.name] then
+				local def=minetest.registered_nodes[node.name]
+				if def and def.on_randomstep then
+					def.on_randomstep(pos,node)
+				else
+					bad[node.name]=true
+				end
 			end
 		end
 	end
